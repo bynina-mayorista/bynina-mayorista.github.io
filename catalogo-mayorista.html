@@ -103,7 +103,8 @@ firebase.initializeApp({
 });
 const db=firebase.database();
 const ROOT='catalogo_mayorista';
-const GRUPOS=['Bikinis','Básicos','Tejidos','Remeras'];
+const GRUPOS_DEF=['Bikinis','Básicos','Tejidos','Remeras'];
+let GRUPOS=GRUPOS_DEF.slice();
 const PAGOS=['Depósito','Transferencia','Comisionista en el local'];
 const ADMIN_PIN='7319'; // PIN del admin del catálogo (distinto al de la app de fábrica: este archivo es público)
 const IMG_BASE='https://acdn-us.mitiendanube.com/stores/006/123/591/products/';
@@ -112,7 +113,7 @@ const URL_BASE='https://www.byninamayorista.com.ar/productos/';
 let PROD={}, SEL={}, PRECIOS={}, CFG={minimo:100000,whatsapp:'5491172573248'}, PEDIDOS={};
 let grupoAct='Todos', CART=loadCart(), busq='';
 const esAdmin=new URLSearchParams(location.search).has('admin');
-let adminOk=false, admTab='sel', admQ='', admFiltro='grupos', admFoco=false;
+let adminOk=false, admTab='sel', admQ='', admFiltro='grupos', admFoco=false, admCat='', admGrp='';
 
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -142,7 +143,7 @@ const listo=()=>{ if(++cargado>=4) render(); else if(cargado>4) render(); };
 db.ref(ROOT+'/productos').on('value',s=>{PROD=s.val()||{}; cargado<4?listo():render();});
 db.ref(ROOT+'/seleccion').on('value',s=>{SEL=s.val()||{}; cargado<4?listo():render();});
 db.ref(ROOT+'/precios').on('value',s=>{PRECIOS=s.val()||{}; cargado<4?listo():render();});
-db.ref(ROOT+'/config').on('value',s=>{CFG=Object.assign({minimo:100000,whatsapp:'5491172573248'},s.val()||{}); $('#minTxt').textContent=money(CFG.minimo); cargado<4?listo():render();});
+db.ref(ROOT+'/config').on('value',s=>{CFG=Object.assign({minimo:100000,whatsapp:'5491172573248'},s.val()||{}); GRUPOS=(Array.isArray(CFG.grupos)&&CFG.grupos.length)?CFG.grupos.slice():GRUPOS_DEF.slice(); $('#minTxt').textContent=money(CFG.minimo); cargado<4?listo():render();});
 setTimeout(()=>{ if(cargado<4){ cargado=4; render(); } },10000);
 
 function render(){ esAdmin?renderAdmin():renderCat(); }
@@ -268,17 +269,21 @@ function admSel(){
   if(!all.length) return `<div class="empty">Todavía no hay productos. Andá a <b>Importar</b> y subí productos_tienda.json.</div>`;
   const q=admQ.toLowerCase();
   let l=all.filter(([id,p])=>!q||(p.nombre+' '+p.codigo).toLowerCase().includes(q));
-  if(admFiltro==='grupos') l=l.filter(([id,p])=>(p.grupos||[]).length||SEL[id]&&SEL[id].on);
+  if(admFiltro==='grupos'&&!admCat) l=l.filter(([id,p])=>(p.grupos||[]).length||SEL[id]&&SEL[id].on);
   if(admFiltro==='elegidos') l=l.filter(([id])=>SEL[id]&&SEL[id].on);
   if(admFiltro==='sinprecio') l=l.filter(([id])=>SEL[id]&&SEL[id].on&&!precioDe(id));
+  if(admCat) l=l.filter(([id,p])=>(p.cats||[]).includes(admCat));
+  if(admGrp) l=l.filter(([id])=>SEL[id]&&SEL[id].on&&SEL[id].grupo===admGrp);
   l.sort((a,b)=>((SEL[b[0]]||{}).on?1:0)-((SEL[a[0]]||{}).on?1:0)||a[1].nombre.localeCompare(b[1].nombre));
   const nOn=Object.values(SEL).filter(s=>s&&s.on).length, nSin=Object.keys(SEL).filter(id=>SEL[id].on&&!precioDe(id)).length;
   return `<div class="hero" style="text-align:left;padding:4px 0"><h1 style="font-size:20px">Selección</h1><p>${nOn} elegidos · ${nSin?`<span class="warn">${nSin} sin precio (no se muestran)</span>`:'todos con precio'}</p></div>
     <div class="adm-bar"><input type="search" id="admQ" placeholder="Buscar nombre o código" value="${esc(admQ)}" oninput="admQ=this.value;admFoco=true;renderAdmin();admFoco=false">
+    <select onchange="admCat=this.value;renderAdmin()"><option value="">Categoría de la tienda: todas</option>${[...new Set(Object.values(PROD).flatMap(p=>p.cats||[]))].sort().map(c=>`<option ${admCat===c?'selected':''}>${esc(c)}</option>`).join('')}</select>
+    <select onchange="admGrp=this.value;renderAdmin()"><option value="">En mi catálogo: todas</option>${GRUPOS.map(g=>`<option ${admGrp===g?'selected':''}>${esc(g)}</option>`).join('')}</select>
     <select onchange="admFiltro=this.value;renderAdmin()">${[['grupos','Remeras, básicos, tejidos, bikinis'],['todos','Todos los productos'],['elegidos','Solo elegidos'],['sinprecio','Elegidos sin precio']].map(([k,v])=>`<option value="${k}" ${admFiltro===k?'selected':''}>${v}</option>`).join('')}</select></div>
-    ${l.slice(0,250).map(([id,p])=>{ const s=SEL[id]||{}; const pr=precioDe(id); const g=s.grupo||(p.grupos||[])[0]||'Remeras';
+    ${l.slice(0,250).map(([id,p])=>{ const s=SEL[id]||{}; const pr=precioDe(id); const g=s.grupo||((p.grupos||[]).find(x=>GRUPOS.includes(x)))||GRUPOS[0]||'Remeras';
       return `<div class="arow"><input type="checkbox" ${s.on?'checked':''} onchange="setSel('${id}',{on:this.checked,grupo:'${g}'})">
-      <img loading="lazy" src="${esc(img(p))}" alt=""><div><b>${esc(p.nombre)}</b><div class="sub">${esc(p.codigo||'sin código')} · ${(p.colores||[]).length} colores · web ${money(p.precio_web)}</div>
+      <img loading="lazy" src="${esc(img(p))}" alt=""><div><b>${esc(p.nombre)}</b><div class="sub">${esc(p.codigo||'sin código')} · ${(p.colores||[]).length} colores · web ${money(p.precio_web)}${(p.cats||[]).length?' · <i>'+esc(p.cats.join(', '))+'</i>':''}</div>
       ${s.on&&!pr?'<div class="warn">Sin precio: cargalo o importá Ninox</div>':''}</div>
       <div class="c4"><select onchange="setSel('${id}',{grupo:this.value})">${GRUPOS.map(x=>`<option ${x===g?'selected':''}>${x}</option>`).join('')}</select></div>
       <div class="c5"><input type="number" placeholder="${pr?money(pr):'Precio'}" value="${s.precio||''}" title="Precio manual (pisa el de Ninox)" onchange="setSel('${id}',{precio:this.value?Number(this.value):null})"></div></div>`; }).join('')}
@@ -287,18 +292,22 @@ function admSel(){
 function setSel(id,patch){ const cur=SEL[id]||{}; if(patch.on&&!cur.grupo&&!patch.grupo) patch.grupo='Remeras'; db.ref(ROOT+'/seleccion/'+id).update(patch); }
 function admImp(){
   return `<div class="hero" style="text-align:left;padding:4px 0"><h1 style="font-size:20px">Importar</h1></div>
-  <div class="ped"><b>1. Productos de la tienda</b><p class="sub">Subí <i>productos_tienda_v2.json</i> (o el más nuevo que te pase). Actualiza fotos, colores, talles y stock. No toca tu selección.</p><input type="file" accept=".json" onchange="impProd(this.files[0])">
+  <div class="ped"><b>1. Productos de la tienda</b><p class="sub">Subí el <i>productos_tienda</i> más nuevo que te pase (ahora v3). Actualiza fotos, colores, talles y stock. No toca tu selección.</p><input type="file" accept=".json" onchange="impProd(this.files[0])">
   <div class="sub">Última actualización: ${CFG.prod_ts?new Date(CFG.prod_ts).toLocaleString('es-AR'):'nunca'}</div></div>
   <div class="ped"><b>2. Precios de Ninox</b><p class="sub">Subí el Excel exportado de Ninox (columna Codigo + una columna de precio). Solo se guarda el código y el precio elegido; el costo nunca se sube.</p>
   <input type="file" accept=".xlsx,.xls,.csv" onchange="leerExcel(this.files[0])"><div id="xlsBox"></div>
   <div class="sub">Precios cargados: ${Object.keys(PRECIOS).length}${CFG.precio_col?' · columna: '+esc(CFG.precio_col):''}</div></div>
-  <div class="ped"><b>3. Configuración</b>
+  <div class="ped"><b>3. Categorías del catálogo</b><p class="sub">Son las pestañas que ve el cliente, en este orden.</p>
+  ${GRUPOS.map((g,i)=>`<div class="line"><span>${esc(g)} <span class="sub">(${Object.values(SEL).filter(x=>x&&x.on&&x.grupo===g).length} productos)</span></span>
+    <span><button class="rm" style="color:var(--accent)" onclick="moverGrupo(${i},-1)">↑</button><button class="rm" style="color:var(--accent)" onclick="moverGrupo(${i},1)">↓</button><button class="rm" onclick="borrarGrupo(${i})">Borrar</button></span></div>`).join('')}
+  <div style="display:flex;gap:8px;margin-top:10px"><input id="nuevoGrupo" placeholder="Nueva categoría (ej: Accesorios)" style="flex:1;border:1px solid var(--hair);border-radius:4px;padding:8px"><button class="btn" onclick="agregarGrupo()">Agregar</button></div></div>
+  <div class="ped"><b>4. Configuración</b>
   <div class="field"><label>Compra mínima</label><input type="number" value="${CFG.minimo}" onchange="db.ref(ROOT+'/config/minimo').set(Number(this.value)||0)"></div>
   <div class="field"><label>WhatsApp de pedidos (con 549…)</label><input value="${esc(CFG.whatsapp)}" onchange="db.ref(ROOT+'/config/whatsapp').set(this.value.replace(/\\D/g,''))"></div></div>`;
 }
 function impProd(f){ if(!f) return; const r=new FileReader(); r.onload=()=>{ try{
   const d=JSON.parse(r.result); const out={};
-  (d.productos||[]).forEach(a=>{ const [id,nombre,url,img,codigo,grupos,colores,talles,stock,pw,fotos]=a; if(!id||!nombre||/[.#$\/\[\]]/.test(id)) return; const st={}; Object.entries(stock||{}).forEach(([k,v])=>{ const kk=k.replace(/[.#$\/\[\]]/g,'_'); if(kk) st[kk]=v; }); out[id]={nombre,url:URL_BASE+url,img,codigo:codigo||'',grupos:grupos||[],colores:colores||[],talles:talles||[],stock:st,precio_web:pw||null,fotos:fotos||[]}; });
+  (d.productos||[]).forEach(a=>{ const [id,nombre,url,img,codigo,grupos,colores,talles,stock,pw,fotos,cats]=a; if(!id||!nombre||/[.#$\/\[\]]/.test(id)) return; const st={}; Object.entries(stock||{}).forEach(([k,v])=>{ const kk=k.replace(/[.#$\/\[\]]/g,'_'); if(kk) st[kk]=v; }); out[id]={nombre,url:URL_BASE+url,img,codigo:codigo||'',grupos:grupos||[],colores:colores||[],talles:talles||[],stock:st,precio_web:pw||null,fotos:fotos||[],cats:cats||[]}; });
   if(!Object.keys(out).length) throw new Error('vacío');
   db.ref(ROOT+'/productos').set(out).then(()=>{ db.ref(ROOT+'/config/prod_ts').set(Date.now()); alert(Object.keys(out).length+' productos importados'); });
 }catch(e){ alert('No pude leer el archivo: '+e.message); } }; r.readAsText(f); }
@@ -314,6 +323,10 @@ function guardarPrecios(){ const cc=$('#xCod').value, pc=$('#xPre').value; const
   XLS.forEach(r=>{ const c=String(r[cc]).trim().toUpperCase().replace(/[.#$\[\]\/]/g,'-'); const v=Number(String(r[pc]).replace(/[^\d.,-]/g,'').replace(/\./g,'').replace(',','.')); if(c&&v>0) out[c]=v; });
   db.ref(ROOT+'/precios').set(out).then(()=>{ db.ref(ROOT+'/config/precio_col').set(pc); alert(Object.keys(out).length+' precios guardados ('+pc+')'); });
 }
+function guardarGrupos(g){ db.ref(ROOT+'/config/grupos').set(g); }
+function agregarGrupo(){ const v=($('#nuevoGrupo').value||'').trim().replace(/['"<>]/g,''); if(!v) return; if(GRUPOS.some(g=>g.toLowerCase()===v.toLowerCase())){ alert('Ya existe'); return; } guardarGrupos([...GRUPOS,v]); }
+function moverGrupo(i,d){ const g=GRUPOS.slice(); const j=i+d; if(j<0||j>=g.length) return; [g[i],g[j]]=[g[j],g[i]]; guardarGrupos(g); }
+function borrarGrupo(i){ const g=GRUPOS[i]; const n=Object.values(SEL).filter(x=>x&&x.on&&x.grupo===g).length; if(n&&!confirm(`"${g}" tiene ${n} productos. Si la borrás dejan de verse hasta que les elijas otra categoría. ¿Borrar?`)) return; guardarGrupos(GRUPOS.filter((x,k)=>k!==i)); }
 function admPed(){
   const l=Object.entries(PEDIDOS).sort((a,b)=>(b[1].ts||0)-(a[1].ts||0));
   if(!l.length) return '<div class="empty">Todavía no hay pedidos.</div>';
