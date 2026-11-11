@@ -74,7 +74,7 @@ table.q input{width:52px;border:1px solid var(--hair);border-radius:4px;padding:
 /* admin */
 .adm-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
 .adm-bar input[type=search]{flex:1;min-width:180px;border:1px solid var(--hair);border-radius:40px;padding:8px 14px}
-.arow{display:grid;grid-template-columns:28px 54px 1fr 120px 110px;gap:10px;align-items:center;border-bottom:1px solid var(--hair);padding:6px 0;font-size:13px}
+.arow{display:grid;grid-template-columns:28px 54px 1fr 260px 110px;gap:10px;align-items:center;border-bottom:1px solid var(--hair);padding:6px 0;font-size:13px}
 .arow img{width:54px;height:72px;object-fit:cover;background:var(--muted)}
 .arow select,.arow input{border:1px solid var(--hair);border-radius:4px;padding:5px;width:100%}
 .warn{color:var(--danger);font-size:11px}
@@ -123,6 +123,11 @@ const fotoColor=(p,ci)=>{ const f=(p.fotos||[])[ci]; return f?(f.startsWith('htt
 function loadCart(){ try{ return JSON.parse(localStorage.getItem('bn_cart')||'{}')||{}; }catch(e){ return {}; } }
 function saveCart(){ try{ localStorage.setItem('bn_cart',JSON.stringify(CART)); }catch(e){} }
 
+// Un producto puede estar en varias categorías: seleccion/<id>/grupos = {Nombre:true}. 'grupo' (texto) es el formato viejo.
+const gk=g=>String(g).replace(/[.#$\/\[\]]/g,'_');
+function gruposDe(s){ if(!s) return []; const out=[]; if(s.grupos) Object.entries(s.grupos).forEach(([k,v])=>{ if(v){ const g=GRUPOS.find(x=>gk(x)===k)||k; out.push(g); } }); if(s.grupo&&!out.includes(s.grupo)&&!(s.grupos&&s.grupos[gk(s.grupo)]===false)) out.push(s.grupo); return out; }
+function ordenEn(s,g){ const o=s&&s.orden&&s.orden[gk(g)]; return o==null?9999:o; }
+function enGrupo(s,g){ return gruposDe(s).includes(g); }
 function precioDe(id){
   const s=SEL[id]||{}; if(s.precio) return Number(s.precio);
   const p=PROD[id]; if(!p) return null;
@@ -151,10 +156,11 @@ function render(){ esAdmin?renderAdmin():renderCat(); }
 // ---------- catálogo cliente ----------
 function renderCat(){
   const lista=enCatalogo();
-  const grupos=['Todos',...GRUPOS.filter(g=>lista.some(x=>x.s.grupo===g))];
+  const grupos=['Todos',...GRUPOS.filter(g=>lista.some(x=>enGrupo(x.s,g)))];
   if(!grupos.includes(grupoAct)) grupoAct='Todos';
   const q=busq.trim().toLowerCase();
-  const items=lista.filter(x=>(grupoAct==='Todos'||x.s.grupo===grupoAct)&&(!q||(x.p.nombre+' '+x.p.codigo).toLowerCase().includes(q)));
+  const items=lista.filter(x=>(grupoAct==='Todos'||enGrupo(x.s,grupoAct))&&(!q||(x.p.nombre+' '+x.p.codigo).toLowerCase().includes(q)));
+  if(grupoAct!=='Todos') items.sort((a,b)=>ordenEn(a.s,grupoAct)-ordenEn(b.s,grupoAct)||a.p.nombre.localeCompare(b.p.nombre));
   $('#app').innerHTML=`
     <div class="tabs">${grupos.map(g=>`<button class="tab ${g===grupoAct?'on':''}" onclick="grupoAct='${g}';renderCat()">${g}</button>`).join('')||''}</div>
     <div class="wrap">
@@ -273,22 +279,42 @@ function admSel(){
   if(admFiltro==='elegidos') l=l.filter(([id])=>SEL[id]&&SEL[id].on);
   if(admFiltro==='sinprecio') l=l.filter(([id])=>SEL[id]&&SEL[id].on&&!precioDe(id));
   if(admCat) l=l.filter(([id,p])=>(p.cats||[]).includes(admCat));
-  if(admGrp) l=l.filter(([id])=>SEL[id]&&SEL[id].on&&SEL[id].grupo===admGrp);
-  l.sort((a,b)=>((SEL[b[0]]||{}).on?1:0)-((SEL[a[0]]||{}).on?1:0)||a[1].nombre.localeCompare(b[1].nombre));
+  if(admGrp) l=l.filter(([id])=>SEL[id]&&SEL[id].on&&enGrupo(SEL[id],admGrp));
+  if(admGrp) l.sort((a,b)=>ordenEn(SEL[a[0]],admGrp)-ordenEn(SEL[b[0]],admGrp)||a[1].nombre.localeCompare(b[1].nombre));
+  else l.sort((a,b)=>((SEL[b[0]]||{}).on?1:0)-((SEL[a[0]]||{}).on?1:0)||a[1].nombre.localeCompare(b[1].nombre));
   const nOn=Object.values(SEL).filter(s=>s&&s.on).length, nSin=Object.keys(SEL).filter(id=>SEL[id].on&&!precioDe(id)).length;
   return `<div class="hero" style="text-align:left;padding:4px 0"><h1 style="font-size:20px">Selección</h1><p>${nOn} elegidos · ${nSin?`<span class="warn">${nSin} sin precio (no se muestran)</span>`:'todos con precio'}</p></div>
     <div class="adm-bar"><input type="search" id="admQ" placeholder="Buscar nombre o código" value="${esc(admQ)}" oninput="admQ=this.value;admFoco=true;renderAdmin();admFoco=false">
     <select onchange="admCat=this.value;renderAdmin()"><option value="">Categoría de la tienda: todas</option>${[...new Set(Object.values(PROD).flatMap(p=>p.cats||[]))].sort().map(c=>`<option ${admCat===c?'selected':''}>${esc(c)}</option>`).join('')}</select>
-    <select onchange="admGrp=this.value;renderAdmin()"><option value="">En mi catálogo: todas</option>${GRUPOS.map(g=>`<option ${admGrp===g?'selected':''}>${esc(g)}</option>`).join('')}</select>
+    <select onchange="admGrp=this.value;renderAdmin()"><option value="">En mi catálogo: todas (elegí una para ordenar)</option>${GRUPOS.map(g=>`<option ${admGrp===g?'selected':''}>${esc(g)}</option>`).join('')}</select>
     <select onchange="admFiltro=this.value;renderAdmin()">${[['grupos','Remeras, básicos, tejidos, bikinis'],['todos','Todos los productos'],['elegidos','Solo elegidos'],['sinprecio','Elegidos sin precio']].map(([k,v])=>`<option value="${k}" ${admFiltro===k?'selected':''}>${v}</option>`).join('')}</select></div>
-    ${l.slice(0,250).map(([id,p])=>{ const s=SEL[id]||{}; const pr=precioDe(id); const g=s.grupo||((p.grupos||[]).find(x=>GRUPOS.includes(x)))||GRUPOS[0]||'Remeras';
-      return `<div class="arow"><input type="checkbox" ${s.on?'checked':''} onchange="setSel('${id}',{on:this.checked,grupo:'${g}'})">
+    <div class="adm-bar" style="background:var(--muted);padding:8px 10px"><span class="sub">Con los ${l.length} que ves:</span>
+      <select id="bulkGrp">${GRUPOS.map(g=>`<option>${esc(g)}</option>`).join('')}</select>
+      <button class="btn" style="padding:7px 14px" onclick="bulkSel(true)">Agregar todos a esa categoría</button>
+      <button class="btn2" style="padding:6px 14px" onclick="bulkQuitar()">Quitarlos de esa categoría</button>
+      <button class="btn2" style="padding:6px 14px" onclick="bulkSel(false)">Sacarlos del catálogo</button></div>
+    ${(window.__vis=l.map(x=>x[0]),'')}
+    ${l.slice(0,250).map(([id,p])=>{ const s=SEL[id]||{}; const pr=precioDe(id); const gs=gruposDe(s); const g=gs[0]||((p.grupos||[]).find(x=>GRUPOS.includes(x)))||GRUPOS[0]||'Remeras';
+      return `<div class="arow"><input type="checkbox" ${s.on?'checked':''} onchange="tildar('${id}',this.checked,'${esc(g)}')">
       <img loading="lazy" src="${esc(img(p))}" alt=""><div><b>${esc(p.nombre)}</b><div class="sub">${esc(p.codigo||'sin código')} · ${(p.colores||[]).length} colores · web ${money(p.precio_web)}${(p.cats||[]).length?' · <i>'+esc(p.cats.join(', '))+'</i>':''}</div>
       ${s.on&&!pr?'<div class="warn">Sin precio: cargalo o importá Ninox</div>':''}</div>
-      <div class="c4"><select onchange="setSel('${id}',{grupo:this.value})">${GRUPOS.map(x=>`<option ${x===g?'selected':''}>${x}</option>`).join('')}</select></div>
-      <div class="c5"><input type="number" placeholder="${pr?money(pr):'Precio'}" value="${s.precio||''}" title="Precio manual (pisa el de Ninox)" onchange="setSel('${id}',{precio:this.value?Number(this.value):null})"></div></div>`; }).join('')}
+      <div class="c4" style="display:flex;flex-wrap:wrap;gap:4px">${GRUPOS.map(x=>{ const on=gs.includes(x); return `<button class="pill" style="cursor:pointer;border:1px solid var(--accent);background:${on?'var(--accent)':'#fff'};color:${on?'#fff':'var(--accent)'}" onclick="toggleGrupo('${id}','${esc(x)}',${!on})">${esc(x)}</button>`; }).join('')}</div>
+      <div class="c5">${admGrp?`<div style="display:flex;gap:4px;margin-bottom:4px"><button class="btn2" style="padding:2px 9px" title="Primero" onclick="moverOrden('${id}','top')">⤒</button><button class="btn2" style="padding:2px 9px" title="Subir" onclick="moverOrden('${id}',-1)">↑</button><button class="btn2" style="padding:2px 9px" title="Bajar" onclick="moverOrden('${id}',1)">↓</button></div>`:''}<input type="number" placeholder="${pr?money(pr):'Precio'}" value="${s.precio||''}" title="Precio manual (pisa el de Ninox)" onchange="setSel('${id}',{precio:this.value?Number(this.value):null})"></div></div>`; }).join('')}
     ${l.length>250?`<div class="sub">Mostrando 250 de ${l.length}. Usá el buscador.</div>`:''}`;
 }
+function bulkSel(on){ const ids=window.__vis||[]; if(!ids.length) return; const g=$('#bulkGrp').value;
+  if(!confirm(on?`¿Agregar ${ids.length} productos a "${g}"?`:`¿Sacar ${ids.length} productos del catálogo?`)) return;
+  const up={}; ids.forEach(id=>{ if(on){ up[id+'/on']=true; up[id+'/grupos/'+gk(g)]=true; } else up[id+'/on']=false; });
+  db.ref(ROOT+'/seleccion').update(up); }
+function bulkQuitar(){ const ids=window.__vis||[]; const g=$('#bulkGrp').value; if(!ids.length||!confirm(`¿Quitar ${ids.length} productos de "${g}"? Siguen en sus otras categorías.`)) return;
+  const up={}; ids.forEach(id=>{ up[id+'/grupos/'+gk(g)]=false; if((SEL[id]||{}).grupo===g) up[id+'/grupo']=null; }); db.ref(ROOT+'/seleccion').update(up); }
+function moverOrden(id,d){ const g=admGrp; if(!g) return;
+  const ids=Object.keys(SEL).filter(k=>SEL[k]&&SEL[k].on&&PROD[k]&&enGrupo(SEL[k],g)).sort((a,b)=>ordenEn(SEL[a],g)-ordenEn(SEL[b],g)||PROD[a].nombre.localeCompare(PROD[b].nombre));
+  const i=ids.indexOf(id); if(i<0) return;
+  if(d==='top'){ ids.splice(i,1); ids.unshift(id); } else { const j=i+d; if(j<0||j>=ids.length) return; [ids[i],ids[j]]=[ids[j],ids[i]]; }
+  const up={}; ids.forEach((k,n)=>{ up[k+'/orden/'+gk(g)]=n+1; }); db.ref(ROOT+'/seleccion').update(up); }
+function tildar(id,on,g){ const s=SEL[id]||{}; const up={on}; if(on&&!gruposDe(s).length) up['grupos/'+gk(g)]=true; db.ref(ROOT+'/seleccion/'+id).update(up); }
+function toggleGrupo(id,g,on){ const s=SEL[id]||{}; const up={}; up['grupos/'+gk(g)]=on; if(s.grupo===g&&!on) up.grupo=null; if(on) up.on=true; db.ref(ROOT+'/seleccion/'+id).update(up); }
 function setSel(id,patch){ const cur=SEL[id]||{}; if(patch.on&&!cur.grupo&&!patch.grupo) patch.grupo='Remeras'; db.ref(ROOT+'/seleccion/'+id).update(patch); }
 function admImp(){
   return `<div class="hero" style="text-align:left;padding:4px 0"><h1 style="font-size:20px">Importar</h1></div>
@@ -298,7 +324,7 @@ function admImp(){
   <input type="file" accept=".xlsx,.xls,.csv" onchange="leerExcel(this.files[0])"><div id="xlsBox"></div>
   <div class="sub">Precios cargados: ${Object.keys(PRECIOS).length}${CFG.precio_col?' · columna: '+esc(CFG.precio_col):''}</div></div>
   <div class="ped"><b>3. Categorías del catálogo</b><p class="sub">Son las pestañas que ve el cliente, en este orden.</p>
-  ${GRUPOS.map((g,i)=>`<div class="line"><span>${esc(g)} <span class="sub">(${Object.values(SEL).filter(x=>x&&x.on&&x.grupo===g).length} productos)</span></span>
+  ${GRUPOS.map((g,i)=>`<div class="line"><span>${esc(g)} <span class="sub">(${Object.values(SEL).filter(x=>x&&x.on&&enGrupo(x,g)).length} productos)</span></span>
     <span><button class="rm" style="color:var(--accent)" onclick="moverGrupo(${i},-1)">↑</button><button class="rm" style="color:var(--accent)" onclick="moverGrupo(${i},1)">↓</button><button class="rm" onclick="borrarGrupo(${i})">Borrar</button></span></div>`).join('')}
   <div style="display:flex;gap:8px;margin-top:10px"><input id="nuevoGrupo" placeholder="Nueva categoría (ej: Accesorios)" style="flex:1;border:1px solid var(--hair);border-radius:4px;padding:8px"><button class="btn" onclick="agregarGrupo()">Agregar</button></div></div>
   <div class="ped"><b>4. Configuración</b>
@@ -326,7 +352,7 @@ function guardarPrecios(){ const cc=$('#xCod').value, pc=$('#xPre').value; const
 function guardarGrupos(g){ db.ref(ROOT+'/config/grupos').set(g); }
 function agregarGrupo(){ const v=($('#nuevoGrupo').value||'').trim().replace(/['"<>]/g,''); if(!v) return; if(GRUPOS.some(g=>g.toLowerCase()===v.toLowerCase())){ alert('Ya existe'); return; } guardarGrupos([...GRUPOS,v]); }
 function moverGrupo(i,d){ const g=GRUPOS.slice(); const j=i+d; if(j<0||j>=g.length) return; [g[i],g[j]]=[g[j],g[i]]; guardarGrupos(g); }
-function borrarGrupo(i){ const g=GRUPOS[i]; const n=Object.values(SEL).filter(x=>x&&x.on&&x.grupo===g).length; if(n&&!confirm(`"${g}" tiene ${n} productos. Si la borrás dejan de verse hasta que les elijas otra categoría. ¿Borrar?`)) return; guardarGrupos(GRUPOS.filter((x,k)=>k!==i)); }
+function borrarGrupo(i){ const g=GRUPOS[i]; const n=Object.values(SEL).filter(x=>x&&x.on&&enGrupo(x,g)).length; if(n&&!confirm(`"${g}" tiene ${n} productos. Si la borrás dejan de verse hasta que les elijas otra categoría. ¿Borrar?`)) return; guardarGrupos(GRUPOS.filter((x,k)=>k!==i)); }
 function admPed(){
   const l=Object.entries(PEDIDOS).sort((a,b)=>(b[1].ts||0)-(a[1].ts||0));
   if(!l.length) return '<div class="empty">Todavía no hay pedidos.</div>';
