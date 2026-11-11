@@ -35,6 +35,11 @@ header{display:flex;align-items:center;justify-content:center;padding:14px 16px;
 .dot{font-size:10px;color:var(--ink2);border:1px solid var(--hair);border-radius:40px;padding:0 7px}
 .badge{display:inline-block;background:var(--rose);color:#fff;font-size:10px;font-weight:700;border-radius:40px;padding:1px 8px;margin-top:6px}
 .empty{color:var(--ink2);text-align:center;padding:40px 10px}
+.search{width:100%;border:1px solid var(--hair);border-radius:40px;padding:10px 16px;background:var(--muted);margin-top:4px}
+.step{display:inline-flex;align-items:center;gap:4px}.step button{width:26px;height:26px;border-radius:50%;border:1px solid var(--hair);background:#fff;cursor:pointer;line-height:1}.step span{min-width:22px;text-align:center;font-weight:700}
+.hbtn{position:absolute;right:14px;top:50%;transform:translateY(-50%);background:var(--ink);color:#fff;border:0;border-radius:40px;padding:8px 14px;font-size:12px;font-weight:500;cursor:pointer}
+.hbtn b{background:#fff;color:var(--ink);border-radius:40px;padding:0 7px;margin-left:6px}
+.disp{font-size:11px;color:var(--ink2);margin-top:2px}
 /* modal */
 .ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;z-index:20;align-items:flex-end;justify-content:center}
 .ov.on{display:flex}
@@ -80,7 +85,7 @@ table.q input{width:52px;border:1px solid var(--hair);border-radius:4px;padding:
 </head>
 <body>
 <div class="bar">Venta mayorista · Compra mínima <span id="minTxt">$100.000</span> · Depósito o transferencia</div>
-<header><div class="logo">BY NINA<small>Catálogo mayorista</small></div></header>
+<header><div class="logo">BY NINA<small>Catálogo mayorista</small></div><button class="hbtn" id="hbtn" style="display:none" onclick="checkout()">Ver pedido<b id="hcnt">0</b></button></header>
 <div id="app"><div class="empty">Cargando catálogo…</div></div>
 
 <div class="ov" id="ov"><div class="sheet" id="sheet"></div></div>
@@ -105,7 +110,7 @@ const IMG_BASE='https://acdn-us.mitiendanube.com/stores/006/123/591/products/';
 const URL_BASE='https://www.byninamayorista.com.ar/productos/';
 
 let PROD={}, SEL={}, PRECIOS={}, CFG={minimo:100000,whatsapp:'5491172573248'}, PEDIDOS={};
-let grupoAct=GRUPOS[0], CART=loadCart();
+let grupoAct='Todos', CART=loadCart(), busq='';
 const esAdmin=new URLSearchParams(location.search).has('admin');
 let adminOk=false, admTab='sel', admQ='', admFiltro='grupos', admFoco=false;
 
@@ -144,37 +149,43 @@ function render(){ esAdmin?renderAdmin():renderCat(); }
 // ---------- catálogo cliente ----------
 function renderCat(){
   const lista=enCatalogo();
-  const grupos=GRUPOS.filter(g=>lista.some(x=>x.s.grupo===g));
-  if(!grupos.includes(grupoAct)) grupoAct=grupos[0]||GRUPOS[0];
-  const items=lista.filter(x=>x.s.grupo===grupoAct);
+  const grupos=['Todos',...GRUPOS.filter(g=>lista.some(x=>x.s.grupo===g))];
+  if(!grupos.includes(grupoAct)) grupoAct='Todos';
+  const q=busq.trim().toLowerCase();
+  const items=lista.filter(x=>(grupoAct==='Todos'||x.s.grupo===grupoAct)&&(!q||(x.p.nombre+' '+x.p.codigo).toLowerCase().includes(q)));
   $('#app').innerHTML=`
     <div class="tabs">${grupos.map(g=>`<button class="tab ${g===grupoAct?'on':''}" onclick="grupoAct='${g}';renderCat()">${g}</button>`).join('')||''}</div>
     <div class="wrap">
-      <div class="hero"><h1>${esc(grupoAct)}</h1><p>Elegí colores y talles, armá tu pedido y envialo por WhatsApp.</p></div>
+      <div class="hero"><h1>${esc(grupoAct==='Todos'?'Catálogo':grupoAct)}</h1><p>Elegí colores y talles, armá tu pedido y envialo por WhatsApp. ${items.length} productos.</p></div>
+      <input class="search" id="busq" type="search" placeholder="Buscar por nombre o artículo…" value="${esc(busq)}" oninput="busq=this.value;renderCat();const b=document.getElementById('busq');b.focus();b.setSelectionRange(b.value.length,b.value.length)">
       ${items.length?`<div class="grid">${items.map(({id,p})=>{ const cols=p.colores||[];
         const enCarrito=Object.keys(CART).some(k=>k.startsWith(id+'|'));
         return `<div class="card" onclick="abrir('${id}')"><img loading="lazy" src="${esc(img(p))}" alt="${esc(p.nombre)}">
-          <div class="nm">${esc(p.nombre)}</div><div class="pr">${money(precioDe(id))}</div>
+          <div class="nm">${esc(p.nombre)}</div><div class="pr">${money(precioDe(id))}</div><div class="disp">${(()=>{ const tl=(p.talles||[]).filter((t,ti)=>(p.colores||[]).some((c,ci)=>disp(p,ci,ti)>0)); return tl.length?tl.length+' talle'+(tl.length!==1?'s':'')+' disponible'+(tl.length!==1?'s':''):'Sin stock'; })()}</div>
           <div class="dots">${cols.slice(0,4).map(c=>`<span class="dot">${esc(c)}</span>`).join('')}${cols.length>4?`<span class="dot">+${cols.length-4}</span>`:''}</div>
           ${enCarrito?'<span class="badge">En tu pedido</span>':''}</div>`; }).join('')}</div>`
       :`<div class="empty">${lista.length?'No hay productos en este grupo.':'El catálogo se está armando. Volvé en un rato.'}</div>`}
     </div>`;
   renderCart();
 }
-function disp(p,ci,ti){ const v=(p.stock||{})[ci+'.'+ti]; return v==null?0:v; }
+function disp(p,ci,ti){ const v=(p.stock||{})[ci+'_'+ti]; return v==null?0:v; } // clave color_talle (Firebase no acepta puntos)
 function abrir(id){
   const p=PROD[id]; const pr=precioDe(id); const cols=p.colores||[], tal=p.talles||[];
   const filas=cols.map((c,ci)=>{ if(!tal.some((t,ti)=>disp(p,ci,ti)>0)) return '';
     return `<tr><td>${esc(c)}</td>${tal.map((t,ti)=>{ const st=disp(p,ci,ti); const k=id+'|'+c+'|'+t;
-      return st>0?`<td><input type="number" min="0" max="${st}" inputmode="numeric" value="${CART[k]?CART[k].cant:''}" data-k="${esc(k)}" data-ci="${ci}" data-ti="${ti}" oninput="setQ(this,'${id}')"></td>`:'<td class="na">—</td>'; }).join('')}</tr>`; }).join('');
+      const n=CART[k]?CART[k].cant:0; const kk=encodeURIComponent(k);
+      return st>0?`<td><span class="step"><button onclick="paso('${id}','${kk}',-1,${st})" aria-label="Menos">−</button><span id="q-${kk.replace(/%/g,'_')}">${n}</span><button onclick="paso('${id}','${kk}',1,${st})" aria-label="Más">+</button></span></td>`:'<td class="na">—</td>'; }).join('')}</tr>`; }).join('');
   $('#sheet').innerHTML=`<div class="sh-top"><img src="${esc(img(p))}" alt=""><div><h2>${esc(p.nombre)}</h2>
     <div class="cod">Art. ${esc(p.codigo||'')}</div><div class="tot" style="margin-top:6px">${money(pr)}</div><div class="sub">por unidad</div></div>
     <button class="x" onclick="cerrar()" aria-label="Cerrar">×</button></div>
     ${filas?`<table class="q"><tr><th>Color</th>${tal.map(t=>`<th>${esc(t)}</th>`).join('')}</tr>${filas}</table>
-    <div class="sub" style="margin-top:8px">Poné la cantidad en cada color y talle. "—" = sin stock.</div>`:'<div class="empty">Sin stock por ahora.</div>'}
+    <div class="sub" style="margin-top:8px">Sumá con + en cada color y talle. "—" = sin stock.</div>`:'<div class="empty">Sin stock por ahora.</div>'}
     <div style="display:flex;justify-content:flex-end;margin-top:14px"><button class="btn" onclick="cerrar()">Listo</button></div>`;
   $('#ov').classList.add('on');
 }
+function paso(id,kk,d,max){ const k=decodeURIComponent(kk); const p=PROD[id]; let n=(CART[k]?CART[k].cant:0)+d; n=Math.max(0,Math.min(max,n));
+  if(n<=0) delete CART[k]; else { const [,c,t]=k.split('|'); CART[k]={id,nombre:p.nombre,codigo:p.codigo||'',color:c,talle:t,cant:n}; }
+  saveCart(); const el=document.getElementById('q-'+kk.replace(/%/g,'_')); if(el) el.textContent=n; renderCart(); }
 function setQ(inp,id){
   const p=PROD[id]; const k=inp.dataset.k; let n=parseInt(inp.value)||0; const max=parseInt(inp.max)||0;
   if(n>max){ n=max; inp.value=max; }
@@ -185,7 +196,8 @@ function cerrar(){ $('#ov').classList.remove('on'); esAdmin?renderAdmin():render
 $('#ov').addEventListener('click',e=>{ if(e.target.id==='ov') cerrar(); });
 function totales(){ let u=0,t=0; Object.values(CART).forEach(l=>{ const pr=precioDe(l.id)||0; u+=l.cant; t+=pr*l.cant; }); return {u,t}; }
 function renderCart(){
-  const c=$('#cart'); const {u,t}=totales(); if(!u){ c.style.display='none'; return; }
+  const c=$('#cart'); const {u,t}=totales(); const hb=$('#hbtn'); if(hb&&!esAdmin){ hb.style.display=u?'block':'none'; $('#hcnt').textContent=u; }
+  if(!u){ c.style.display='none'; return; }
   const pct=Math.min(100,Math.round(t/CFG.minimo*100)), falta=CFG.minimo-t;
   c.style.display='block';
   c.innerHTML=`<div class="cart-in"><div class="prog"><div><span class="tot">${money(t)}</span> <span class="sub">· ${u} prenda${u!==1?'s':''}</span></div>
@@ -285,7 +297,7 @@ function admImp(){
 }
 function impProd(f){ if(!f) return; const r=new FileReader(); r.onload=()=>{ try{
   const d=JSON.parse(r.result); const out={};
-  (d.productos||[]).forEach(a=>{ const [id,nombre,url,img,codigo,grupos,colores,talles,stock,pw]=a; out[id]={nombre,url:URL_BASE+url,img,codigo:codigo||'',grupos:grupos||[],colores:colores||[],talles:talles||[],stock:stock||{},precio_web:pw||null}; });
+  (d.productos||[]).forEach(a=>{ const [id,nombre,url,img,codigo,grupos,colores,talles,stock,pw]=a; const st={}; Object.entries(stock||{}).forEach(([k,v])=>{ st[k.replace('.','_')]=v; }); out[id]={nombre,url:URL_BASE+url,img,codigo:codigo||'',grupos:grupos||[],colores:colores||[],talles:talles||[],stock:st,precio_web:pw||null}; });
   if(!Object.keys(out).length) throw new Error('vacío');
   db.ref(ROOT+'/productos').set(out).then(()=>{ db.ref(ROOT+'/config/prod_ts').set(Date.now()); alert(Object.keys(out).length+' productos importados'); });
 }catch(e){ alert('No pude leer el archivo: '+e.message); } }; r.readAsText(f); }
