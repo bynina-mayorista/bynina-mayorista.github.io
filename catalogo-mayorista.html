@@ -84,7 +84,7 @@ table.q input{width:52px;border:1px solid var(--hair);border-radius:4px;padding:
 </style>
 </head>
 <body>
-<div class="bar">Venta mayorista · Compra mínima <span id="minTxt">$100.000</span> · Depósito o transferencia</div>
+<div class="bar">Venta mayorista · Compra mínima <span id="minTxt">$100.000</span> · Envío gratis en moto CABA y GBA</div>
 <header><div class="logo">BY NINA<small>Catálogo mayorista</small></div><button class="hbtn" id="hbtn" style="display:none" onclick="checkout()">Ver pedido<b id="hcnt">0</b></button></header>
 <div id="app"><div class="empty">Cargando catálogo…</div></div>
 
@@ -145,7 +145,7 @@ function enCatalogo(){
 // ---------- datos ----------
 let cargado=0;
 const listo=()=>{ if(++cargado>=4) render(); else if(cargado>4) render(); };
-db.ref(ROOT+'/productos').on('value',s=>{PROD=s.val()||{}; cargado<4?listo():render();});
+db.ref(ROOT+'/productos').on('value',s=>{PROD=s.val()||{}; Object.entries(PROD).forEach(([k,v])=>{ if(v) v._id=k; }); cargado<4?listo():render();});
 db.ref(ROOT+'/seleccion').on('value',s=>{SEL=s.val()||{}; cargado<4?listo():render();});
 db.ref(ROOT+'/precios').on('value',s=>{PRECIOS=s.val()||{}; cargado<4?listo():render();});
 db.ref(ROOT+'/config').on('value',s=>{CFG=Object.assign({minimo:100000,whatsapp:'5491172573248'},s.val()||{}); GRUPOS=(Array.isArray(CFG.grupos)&&CFG.grupos.length)?CFG.grupos.slice():GRUPOS_DEF.slice(); $('#minTxt').textContent=money(CFG.minimo); cargado<4?listo():render();});
@@ -176,7 +176,7 @@ function renderCat(){
     </div>`;
   renderCart();
 }
-function disp(p,ci,ti){ const v=(p.stock||{})[ci+'_'+ti]; return v==null?0:v; } // clave color_talle (Firebase no acepta puntos)
+function disp(p,ci,ti){ const v=(p.stock||{})[ci+'_'+ti]; return v==null?0:v; } // clave color_talle (Firebase no acepta puntos) // clave color_talle (Firebase no acepta puntos)
 function abrir(id){
   const p=PROD[id]; const pr=precioDe(id); const cols=p.colores||[], tal=p.talles||[];
   const filas=cols.map((c,ci)=>{ if(!tal.some((t,ti)=>disp(p,ci,ti)>0)) return '';
@@ -220,11 +220,12 @@ function checkout(){
       <div style="text-align:right">${money((precioDe(l.id)||0)*l.cant)}<br><button class="rm" onclick="quitar('${esc(k)}')">Quitar</button></div></div>`).join('')}</div>
     <div class="field"><label>Nombre y apellido / negocio *</label><input id="cNom" autocomplete="name"></div>
     <div class="field"><label>WhatsApp *</label><input id="cTel" inputmode="tel" autocomplete="tel"></div>
-    <div class="field"><label>Localidad</label><input id="cLoc"></div>
+    <div class="field"><label>Transporte que preferís *</label><input id="cTra" list="transportes" placeholder="Ej: Andreani, Vía Cargo, expreso, comisionista…"><datalist id="transportes"><option>Motomensajería (gratis CABA y GBA)</option><option>Andreani</option><option>Correo Argentino</option><option>Vía Cargo</option><option>Expreso / transporte propio</option><option>Comisionista</option><option>Retiro en el local</option></datalist></div>
+    <div class="field"><label>Dirección de entrega *</label><input id="cDir" autocomplete="street-address" placeholder="Calle, número, localidad, provincia, CP"></div>
     <div class="field"><label>Forma de pago *</label><select id="cPago" onchange="$('#comBox').style.display=this.value==='Comisionista en el local'?'flex':'none'">${PAGOS.map(p=>`<option>${p}</option>`).join('')}</select></div>
     <div class="field" id="comBox" style="display:none"><label>Nombre del comisionista</label><input id="cCom"></div>
     <div class="field"><label>Comentarios</label><textarea id="cObs" rows="2"></textarea></div>
-    <div class="note">Pago solo por depósito, transferencia o con comisionista en el local. Te confirmamos stock y total por WhatsApp.</div>
+    <div class="note">🛵 <b>Envío gratis por motomensajería en CABA y GBA.</b><br>Pago solo por depósito, transferencia o con comisionista en el local. Te confirmamos stock y total por WhatsApp.</div>
     ${t<CFG.minimo?`<div class="warn" style="margin-top:10px">El mínimo de compra es ${money(CFG.minimo)}. Te faltan ${money(CFG.minimo-t)}.</div>`:''}
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button class="btn2" onclick="cerrar()">Seguir comprando</button>
     <button class="btn" ${t<CFG.minimo?'disabled':''} onclick="enviar()">Enviar pedido</button></div>`;
@@ -232,21 +233,24 @@ function checkout(){
 }
 function quitar(k){ delete CART[k]; saveCart(); renderCart(); Object.keys(CART).length?checkout():cerrar(); }
 async function enviar(){
-  const nom=$('#cNom').value.trim(), tel=$('#cTel').value.trim();
-  if(!nom||!tel){ alert('Completá nombre y WhatsApp.'); return; }
+  const nom=$('#cNom').value.trim(), tel=$('#cTel').value.trim(), tra=$('#cTra').value.trim(), dir=$('#cDir').value.trim();
+  if(!nom||!tel||!tra||!dir){ alert('Completá nombre, WhatsApp, transporte y dirección de entrega.'); return; }
   const {u,t}=totales(); if(t<CFG.minimo) return;
-  const pago=$('#cPago').value, com=($('#cCom')||{}).value||'', loc=$('#cLoc').value.trim(), obs=$('#cObs').value.trim();
+  const pago=$('#cPago').value, com=($('#cCom')||{}).value||'', obs=$('#cObs').value.trim();
   const items=Object.values(CART).map(l=>({...l,precio:precioDe(l.id)||0}));
-  const ped={ts:Date.now(),cliente:{nombre:nom,tel,localidad:loc},pago,comisionista:com||null,obs:obs||null,items,unidades:u,total:t,estado:'nuevo'};
+  const ped={ts:Date.now(),cliente:{nombre:nom,tel,transporte:tra,direccion:dir},pago,comisionista:com||null,obs:obs||null,items,unidades:u,total:t,estado:'nuevo'};
   let nro='';
   try{ const r=await db.ref(ROOT+'/pedidos').push(ped); nro=r.key.slice(-5).toUpperCase(); }catch(e){ console.error(e); }
   const porArt={}; items.forEach(i=>{ (porArt[i.nombre+' ('+i.codigo+')']=porArt[i.nombre+' ('+i.codigo+')']||[]).push(`${i.color} ${i.talle} x${i.cant}`); });
-  const txt=`*Pedido mayorista By Nina*${nro?' #'+nro:''}\n${nom}${loc?' · '+loc:''}\nTel: ${tel}\nPago: ${pago}${com?' ('+com+')':''}\n\n`+
+  const txt=`*Pedido mayorista By Nina*${nro?' #'+nro:''}\n${nom}\nTel: ${tel}\nTransporte: ${tra}\nEntrega: ${dir}\nPago: ${pago}${com?' ('+com+')':''}\n\n`+
     Object.entries(porArt).map(([a,ls])=>`• ${a}\n   ${ls.join(', ')}`).join('\n')+
     `\n\n${u} prendas · Total ${money(t)}${obs?'\n\nComentarios: '+obs:''}`;
   CART={}; saveCart(); renderCart();
-  $('#sheet').innerHTML=`<h2 style="font-family:Poppins">¡Pedido enviado!</h2><p>Te abrimos WhatsApp para mandárnoslo. Si no se abre, tocá el botón.</p>
-    <a class="btn" style="display:inline-block;text-decoration:none" target="_blank" rel="noopener" href="https://wa.me/${CFG.whatsapp}?text=${encodeURIComponent(txt)}">Abrir WhatsApp</a>`;
+  $('#sheet').innerHTML=`<div class="sh-top"><div><h2 style="font-family:Poppins">¡Pedido recibido!${nro?' #'+nro:''}</h2><div class="sub">${u} prendas · Total ${money(t)}</div></div><button class="x" onclick="cerrar()">×</button></div>
+    ${pago!=='Comisionista en el local'?`<div class="note" style="font-size:13px;line-height:20px"><b>Datos para el ${pago.toLowerCase()}</b><br>${esc(CFG.datos_pago||'Te los pasamos por WhatsApp.').replace(/\n/g,'<br>')}<br><br><b>Importe: ${money(t)}</b></div>`:''}
+    <p style="font-size:14px;line-height:21px;margin-top:14px">Una vez que hagas el pago, mandanos el comprobante por WhatsApp. <b>Carol te va a contactar para preparar tu pedido dentro de las 24 hs de confirmado el pago.</b></p>
+    <p class="sub">Si WhatsApp no se abrió solo, tocá el botón para mandarnos el pedido.</p>
+    <a class="btn" style="display:inline-block;text-decoration:none;margin-top:6px" target="_blank" rel="noopener" href="https://wa.me/${CFG.whatsapp}?text=${encodeURIComponent(txt)}">Enviar pedido por WhatsApp</a>`;
   window.open('https://wa.me/'+CFG.whatsapp+'?text='+encodeURIComponent(txt),'_blank');
 }
 
@@ -329,6 +333,7 @@ function admImp(){
   <div style="display:flex;gap:8px;margin-top:10px"><input id="nuevoGrupo" placeholder="Nueva categoría (ej: Accesorios)" style="flex:1;border:1px solid var(--hair);border-radius:4px;padding:8px"><button class="btn" onclick="agregarGrupo()">Agregar</button></div></div>
   <div class="ped"><b>4. Configuración</b>
   <div class="field"><label>Compra mínima</label><input type="number" value="${CFG.minimo}" onchange="db.ref(ROOT+'/config/minimo').set(Number(this.value)||0)"></div>
+  <div class="field"><label>Datos para depósito / transferencia (los ve el cliente al terminar)</label><textarea rows="4" placeholder="Titular, banco, CBU, alias, CUIT" onchange="db.ref(ROOT+'/config/datos_pago').set(this.value)">${esc(CFG.datos_pago||'')}</textarea></div>
   <div class="field"><label>WhatsApp de pedidos (con 549…)</label><input value="${esc(CFG.whatsapp)}" onchange="db.ref(ROOT+'/config/whatsapp').set(this.value.replace(/\\D/g,''))"></div></div>`;
 }
 function impProd(f){ if(!f) return; const r=new FileReader(); r.onload=()=>{ try{
@@ -355,11 +360,13 @@ function moverGrupo(i,d){ const g=GRUPOS.slice(); const j=i+d; if(j<0||j>=g.leng
 function borrarGrupo(i){ const g=GRUPOS[i]; const n=Object.values(SEL).filter(x=>x&&x.on&&enGrupo(x,g)).length; if(n&&!confirm(`"${g}" tiene ${n} productos. Si la borrás dejan de verse hasta que les elijas otra categoría. ¿Borrar?`)) return; guardarGrupos(GRUPOS.filter((x,k)=>k!==i)); }
 function admPed(){
   const l=Object.entries(PEDIDOS).sort((a,b)=>(b[1].ts||0)-(a[1].ts||0));
-  if(!l.length) return '<div class="empty">Todavía no hay pedidos.</div>';
+  const ayuda='';
+  if(!l.length) return ayuda+'<div class="empty">Todavía no hay pedidos.</div>';
   const col={nuevo:['#fde7e4','#b4362b'],confirmado:['#e7eef8','#416096'],preparado:['#f2ecee','#9b5c6b'],entregado:['#e3f5ea','#1b7a3f'],cancelado:['#eee','#666']};
-  return l.map(([k,p])=>{ const [bg,fg]=col[p.estado]||col.nuevo;
+  return ayuda+l.map(([k,p])=>{ const [bg,fg]=col[p.estado]||col.nuevo;
     return `<div class="ped"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div><b>#${k.slice(-5).toUpperCase()} · ${esc(p.cliente&&p.cliente.nombre)}</b>
-      <div class="sub">${new Date(p.ts).toLocaleString('es-AR')} · ${esc(p.cliente&&p.cliente.tel)}${p.cliente&&p.cliente.localidad?' · '+esc(p.cliente.localidad):''} · ${esc(p.pago)}${p.comisionista?' ('+esc(p.comisionista)+')':''}</div></div>
+      <div class="sub">${new Date(p.ts).toLocaleString('es-AR')} · ${esc(p.cliente&&p.cliente.tel)} · ${esc(p.pago)}${p.comisionista?' ('+esc(p.comisionista)+')':''}</div>
+      <div class="sub">🚚 ${esc((p.cliente&&p.cliente.transporte)||'-')} · 📍 ${esc((p.cliente&&(p.cliente.direccion||p.cliente.localidad))||'-')}</div></div>
       <div><span class="pill" style="background:${bg};color:${fg}">${esc(p.estado)}</span> <span class="tot" style="font-size:15px">${money(p.total)}</span></div></div>
       <div class="lines">${(p.items||[]).map(i=>`<div class="line"><span>${esc(i.nombre)} <span class="sub">${esc(i.codigo)}</span> — ${esc(i.color)} ${esc(i.talle)}</span><span>x${i.cant}</span></div>`).join('')}</div>
       ${p.obs?`<div class="note">${esc(p.obs)}</div>`:''}
