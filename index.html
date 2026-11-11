@@ -35,6 +35,23 @@ header{display:flex;align-items:center;justify-content:center;padding:14px 16px;
 .dot{font-size:10px;color:var(--ink2);border:1px solid var(--hair);border-radius:40px;padding:0 7px}
 .badge{display:inline-block;background:var(--rose);color:#fff;font-size:10px;font-weight:700;border-radius:40px;padding:1px 8px;margin-top:6px}
 .empty{color:var(--ink2);text-align:center;padding:40px 10px}
+.homehero{position:relative;height:62vh;min-height:380px;max-height:620px;background:var(--plum) center/cover no-repeat;display:flex;align-items:flex-end;justify-content:center;text-align:center;color:#fff}
+.homehero::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0) 35%,rgba(0,0,0,.55))}
+.homehero div{position:relative;padding:0 18px 40px;max-width:760px}
+.homehero small{display:block;font:600 13px/16px Poppins,Arial;letter-spacing:.12em;text-transform:uppercase}
+.homehero h1{font:700 clamp(30px,6vw,56px)/1.02 Poppins,Arial;text-transform:uppercase;margin:8px 0 18px}
+.homehero .btn{background:#fff;color:var(--ink)}
+.perks{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid var(--hair)}
+.perks div{padding:14px 10px;text-align:center;font-size:12px;line-height:16px;border-right:1px solid var(--hair)}
+.perks div:last-child{border-right:0}
+.perks b{display:block;font:700 13px/18px Poppins,Arial;text-transform:uppercase}
+.sec-t{display:flex;justify-content:space-between;align-items:baseline;margin:28px 0 4px}
+.sec-t h2{font:700 20px/24px Poppins,Arial;text-transform:uppercase;margin:0}
+.sec-t a{color:var(--accent);font-size:13px;cursor:pointer}
+.cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:14px}
+.catc{position:relative;aspect-ratio:3/4;background:var(--muted) center/cover;cursor:pointer;display:flex;align-items:flex-end}
+.catc span{width:100%;background:linear-gradient(180deg,transparent,rgba(0,0,0,.6));color:#fff;font:700 15px/18px Poppins,Arial;text-transform:uppercase;padding:30px 12px 12px}
+@media(max-width:640px){.perks{grid-template-columns:1fr}.perks div{border-right:0;border-bottom:1px solid var(--hair)}}
 .search{width:100%;border:1px solid var(--hair);border-radius:40px;padding:10px 16px;background:var(--muted);margin-top:4px}
 .step{display:inline-flex;align-items:center;gap:4px}.step button{width:26px;height:26px;border-radius:50%;border:1px solid var(--hair);background:#fff;cursor:pointer;line-height:1}.step span{min-width:22px;text-align:center;font-weight:700}
 .hbtn{position:absolute;right:14px;top:50%;transform:translateY(-50%);background:var(--ink);color:#fff;border:0;border-radius:40px;padding:8px 14px;font-size:12px;font-weight:500;cursor:pointer}
@@ -111,7 +128,8 @@ const IMG_BASE='https://acdn-us.mitiendanube.com/stores/006/123/591/products/';
 const URL_BASE='https://www.byninamayorista.com.ar/productos/';
 
 let PROD={}, SEL={}, PRECIOS={}, CFG={minimo:100000,whatsapp:'5491172573248'}, PEDIDOS={};
-let grupoAct='Todos', CART=loadCart(), busq='';
+let grupoAct='Inicio', CART=loadCart(), busq='';
+const rankDe=p=>p&&p.ranking!=null?p.ranking:((p&&(p.cats||[]).includes('Más vendidos'))?500:9999);
 const esAdmin=new URLSearchParams(location.search).has('admin');
 let adminOk=false, admTab='sel', admQ='', admFiltro='grupos', admFoco=false, admCat='', admGrp='';
 
@@ -156,23 +174,48 @@ function render(){ esAdmin?renderAdmin():renderCat(); }
 // ---------- catálogo cliente ----------
 function renderCat(){
   const lista=enCatalogo();
-  const grupos=['Todos',...GRUPOS.filter(g=>lista.some(x=>enGrupo(x.s,g)))];
-  if(!grupos.includes(grupoAct)) grupoAct='Todos';
+  const grupos=['Inicio','Todos',...GRUPOS.filter(g=>lista.some(x=>enGrupo(x.s,g)))];
+  if(!grupos.includes(grupoAct)) grupoAct='Inicio';
+  if(grupoAct==='Inicio'&&!busq.trim()) return renderHome(lista,grupos);
   const q=busq.trim().toLowerCase();
-  const items=lista.filter(x=>(grupoAct==='Todos'||enGrupo(x.s,grupoAct))&&(!q||(x.p.nombre+' '+x.p.codigo).toLowerCase().includes(q)));
-  if(grupoAct!=='Todos') items.sort((a,b)=>ordenEn(a.s,grupoAct)-ordenEn(b.s,grupoAct)||a.p.nombre.localeCompare(b.p.nombre));
+  const items=lista.filter(x=>(grupoAct==='Todos'||grupoAct==='Inicio'||enGrupo(x.s,grupoAct))&&(!q||(x.p.nombre+' '+x.p.codigo).toLowerCase().includes(q)));
+  if(grupoAct!=='Todos'&&grupoAct!=='Inicio') items.sort((a,b)=>ordenEn(a.s,grupoAct)-ordenEn(b.s,grupoAct)||a.p.nombre.localeCompare(b.p.nombre));
   $('#app').innerHTML=`
-    <div class="tabs">${grupos.map(g=>`<button class="tab ${g===grupoAct?'on':''}" onclick="grupoAct='${g}';renderCat()">${g}</button>`).join('')||''}</div>
+    <div class="tabs">${grupos.map(g=>`<button class="tab ${g===grupoAct?'on':''}" onclick="irA('${g}')">${g}</button>`).join('')||''}</div>
     <div class="wrap">
-      <div class="hero"><h1>${esc(grupoAct==='Todos'?'Catálogo':grupoAct)}</h1><p>Elegí colores y talles, armá tu pedido y envialo por WhatsApp. ${items.length} productos.</p></div>
+      <div class="hero"><h1>${esc(grupoAct==='Todos'||grupoAct==='Inicio'?'Catálogo':grupoAct)}</h1><p>Elegí colores y talles, armá tu pedido y envialo por WhatsApp. ${items.length} productos.</p></div>
       <input class="search" id="busq" type="search" placeholder="Buscar por nombre o artículo…" value="${esc(busq)}" oninput="busq=this.value;renderCat();const b=document.getElementById('busq');b.focus();b.setSelectionRange(b.value.length,b.value.length)">
-      ${items.length?`<div class="grid">${items.map(({id,p})=>{ const cols=p.colores||[];
-        const enCarrito=Object.keys(CART).some(k=>k.startsWith(id+'|'));
-        return `<div class="card" onclick="abrir('${id}')"><img loading="lazy" src="${esc(img(p))}" alt="${esc(p.nombre)}">
-          <div class="nm">${esc(p.nombre)}</div><div class="pr">${money(precioDe(id))}</div><div class="disp">${(()=>{ const tl=(p.talles||[]).filter((t,ti)=>(p.colores||[]).some((c,ci)=>disp(p,ci,ti)>0)); return tl.length?tl.length+' talle'+(tl.length!==1?'s':'')+' disponible'+(tl.length!==1?'s':''):'Sin stock'; })()}</div>
-          <div class="dots">${cols.slice(0,4).map(c=>`<span class="dot">${esc(c)}</span>`).join('')}${cols.length>4?`<span class="dot">+${cols.length-4}</span>`:''}</div>
-          ${enCarrito?'<span class="badge">En tu pedido</span>':''}</div>`; }).join('')}</div>`
+      ${items.length?`<div class="grid">${items.map(cardHtml).join('')}</div>`
       :`<div class="empty">${lista.length?'No hay productos en este grupo.':'El catálogo se está armando. Volvé en un rato.'}</div>`}
+    </div>`;
+  renderCart();
+}
+function cardHtml({id,p}){ const cols=p.colores||[];
+  const enCarrito=Object.keys(CART).some(k=>k.startsWith(id+'|'));
+  return `<div class="card" onclick="abrir('${id}')"><img loading="lazy" src="${esc(img(p))}" alt="${esc(p.nombre)}">
+    <div class="nm">${esc(p.nombre)}</div><div class="pr">${money(precioDe(id))}</div><div class="disp">${(()=>{ const tl=(p.talles||[]).filter((t,ti)=>(p.colores||[]).some((c,ci)=>disp(p,ci,ti)>0)); return tl.length?tl.length+' talle'+(tl.length!==1?'s':'')+' disponible'+(tl.length!==1?'s':''):'Sin stock'; })()}</div>
+    <div class="dots">${cols.slice(0,4).map(c=>`<span class="dot">${esc(c)}</span>`).join('')}${cols.length>4?`<span class="dot">+${cols.length-4}</span>`:''}</div>
+    ${enCarrito?'<span class="badge">En tu pedido</span>':''}</div>`; }
+function irA(g){ grupoAct=g; busq=''; renderCat(); window.scrollTo(0,0); }
+function renderHome(lista,grupos){
+  const conStock=lista.filter(x=>(x.p.talles||[]).some((t,ti)=>(x.p.colores||[]).some((c,ci)=>disp(x.p,ci,ti)>0)));
+  const top=conStock.slice().sort((a,b)=>rankDe(a.p)-rankDe(b.p)).slice(0,8);
+  const heroImg=top[0]?img(top[0].p):'';
+  const cats=grupos.filter(g=>g!=='Inicio'&&g!=='Todos').map(g=>{ const l=conStock.filter(x=>enGrupo(x.s,g)).sort((a,b)=>ordenEn(a.s,g)-ordenEn(b.s,g)); return {g,ph:l[0]?img(l[0].p):'',n:l.length}; }).filter(c=>c.n);
+  $('#app').innerHTML=`
+    <div class="tabs">${grupos.map(g=>`<button class="tab ${g===grupoAct?'on':''}" onclick="irA('${g}')">${g}</button>`).join('')}</div>
+    <section class="homehero" style="${heroImg?`background-image:url('${esc(heroImg)}')`:''}"><div>
+      <small>Venta mayorista</small>
+      <h1>Lo que sí o sí<br>necesitás en tu local</h1>
+      <button class="btn" onclick="irA('Todos')">Ver catálogo</button></div></section>
+    <div class="perks"><div><b>Mínimo ${money(CFG.minimo)}</b>Armá tu pedido online</div><div><b>Envío gratis en moto</b>CABA y GBA</div><div><b>Transferencia o depósito</b>o con tu comisionista</div></div>
+    <div class="wrap" style="padding-top:4px">
+      ${top.length?`<div class="sec-t"><h2>Los más vendidos</h2><a onclick="irA('Todos')">Ver todo →</a></div>
+      <p class="sub" style="margin:0">Lo que más se llevan nuestros clientes mayoristas.</p>
+      <div class="grid">${top.map(cardHtml).join('')}</div>`:''}
+      ${cats.length?`<div class="sec-t"><h2>Categorías</h2></div>
+      <div class="cats">${cats.map(c=>`<div class="catc" style="${c.ph?`background-image:url('${esc(c.ph)}')`:''}" onclick="irA('${esc(c.g)}')"><span>${esc(c.g)}</span></div>`).join('')}</div>`:''}
+      ${!lista.length?'<div class="empty">El catálogo se está armando. Volvé en un rato.</div>':''}
     </div>`;
   renderCart();
 }
@@ -358,6 +401,7 @@ function guardarGrupos(g){ db.ref(ROOT+'/config/grupos').set(g); }
 function agregarGrupo(){ const v=($('#nuevoGrupo').value||'').trim().replace(/['"<>]/g,''); if(!v) return; if(GRUPOS.some(g=>g.toLowerCase()===v.toLowerCase())){ alert('Ya existe'); return; } guardarGrupos([...GRUPOS,v]); }
 function moverGrupo(i,d){ const g=GRUPOS.slice(); const j=i+d; if(j<0||j>=g.length) return; [g[i],g[j]]=[g[j],g[i]]; guardarGrupos(g); }
 function borrarGrupo(i){ const g=GRUPOS[i]; const n=Object.values(SEL).filter(x=>x&&x.on&&enGrupo(x,g)).length; if(n&&!confirm(`"${g}" tiene ${n} productos. Si la borrás dejan de verse hasta que les elijas otra categoría. ¿Borrar?`)) return; guardarGrupos(GRUPOS.filter((x,k)=>k!==i)); }
+function borrarPedido(k){ const p=PEDIDOS[k]; if(!p) return; if(!confirm(`¿Borrar el pedido #${k.slice(-5).toUpperCase()} de ${(p.cliente&&p.cliente.nombre)||''}? No se puede deshacer.`)) return; db.ref(ROOT+'/pedidos/'+k).remove(); }
 function admPed(){
   const l=Object.entries(PEDIDOS).sort((a,b)=>(b[1].ts||0)-(a[1].ts||0));
   const ayuda='';
@@ -370,7 +414,8 @@ function admPed(){
       <div><span class="pill" style="background:${bg};color:${fg}">${esc(p.estado)}</span> <span class="tot" style="font-size:15px">${money(p.total)}</span></div></div>
       <div class="lines">${(p.items||[]).map(i=>`<div class="line"><span>${esc(i.nombre)} <span class="sub">${esc(i.codigo)}</span> — ${esc(i.color)} ${esc(i.talle)}</span><span>x${i.cant}</span></div>`).join('')}</div>
       ${p.obs?`<div class="note">${esc(p.obs)}</div>`:''}
-      <div style="margin-top:8px"><select onchange="db.ref(ROOT+'/pedidos/${k}/estado').set(this.value)">${Object.keys(col).map(s=>`<option ${s===p.estado?'selected':''}>${s}</option>`).join('')}</select></div></div>`; }).join('');
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center"><select onchange="db.ref(ROOT+'/pedidos/${k}/estado').set(this.value)">${Object.keys(col).map(s=>`<option ${s===p.estado?'selected':''}>${s}</option>`).join('')}</select>
+      <button class="rm" onclick="borrarPedido('${k}')">Borrar pedido</button></div></div>`; }).join('');
 }
 </script>
 </body>
