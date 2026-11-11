@@ -118,6 +118,7 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>'$'+Math.round(n||0).toLocaleString('es-AR');
 const img=p=>p&&p.img?(p.img.startsWith('http')?p.img:IMG_BASE+p.img):'';
+const fotoColor=(p,ci)=>{ const f=(p.fotos||[])[ci]; return f?(f.startsWith('http')?f:IMG_BASE+f):img(p); };
 function loadCart(){ try{ return JSON.parse(localStorage.getItem('bn_cart')||'{}')||{}; }catch(e){ return {}; } }
 function saveCart(){ try{ localStorage.setItem('bn_cart',JSON.stringify(CART)); }catch(e){} }
 
@@ -172,14 +173,14 @@ function disp(p,ci,ti){ const v=(p.stock||{})[ci+'_'+ti]; return v==null?0:v; } 
 function abrir(id){
   const p=PROD[id]; const pr=precioDe(id); const cols=p.colores||[], tal=p.talles||[];
   const filas=cols.map((c,ci)=>{ if(!tal.some((t,ti)=>disp(p,ci,ti)>0)) return '';
-    return `<tr><td>${esc(c)}</td>${tal.map((t,ti)=>{ const st=disp(p,ci,ti); const k=id+'|'+c+'|'+t;
+    return `<tr><td><span style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="document.getElementById('shImg').src='${esc(fotoColor(p,ci))}'"><img src="${esc(fotoColor(p,ci))}" alt="" loading="lazy" style="width:36px;height:48px;object-fit:cover;background:var(--muted)">${esc(c)}</span></td>${tal.map((t,ti)=>{ const st=disp(p,ci,ti); const k=id+'|'+c+'|'+t;
       const n=CART[k]?CART[k].cant:0; const kk=encodeURIComponent(k);
       return st>0?`<td><span class="step"><button onclick="paso('${id}','${kk}',-1,${st})" aria-label="Menos">−</button><span id="q-${kk.replace(/%/g,'_')}">${n}</span><button onclick="paso('${id}','${kk}',1,${st})" aria-label="Más">+</button></span></td>`:'<td class="na">—</td>'; }).join('')}</tr>`; }).join('');
-  $('#sheet').innerHTML=`<div class="sh-top"><img src="${esc(img(p))}" alt=""><div><h2>${esc(p.nombre)}</h2>
+  $('#sheet').innerHTML=`<div class="sh-top"><img id="shImg" src="${esc(img(p))}" alt=""><div><h2>${esc(p.nombre)}</h2>
     <div class="cod">Art. ${esc(p.codigo||'')}</div><div class="tot" style="margin-top:6px">${money(pr)}</div><div class="sub">por unidad</div></div>
     <button class="x" onclick="cerrar()" aria-label="Cerrar">×</button></div>
     ${filas?`<table class="q"><tr><th>Color</th>${tal.map(t=>`<th>${esc(t)}</th>`).join('')}</tr>${filas}</table>
-    <div class="sub" style="margin-top:8px">Sumá con + en cada color y talle. "—" = sin stock.</div>`:'<div class="empty">Sin stock por ahora.</div>'}
+    <div class="sub" style="margin-top:8px">Tocá un color para ver su foto. Sumá con + en cada talle. "—" = sin stock.</div>`:'<div class="empty">Sin stock por ahora.</div>'}
     <div style="display:flex;justify-content:flex-end;margin-top:14px"><button class="btn" onclick="cerrar()">Listo</button></div>`;
   $('#ov').classList.add('on');
 }
@@ -286,7 +287,7 @@ function admSel(){
 function setSel(id,patch){ const cur=SEL[id]||{}; if(patch.on&&!cur.grupo&&!patch.grupo) patch.grupo='Remeras'; db.ref(ROOT+'/seleccion/'+id).update(patch); }
 function admImp(){
   return `<div class="hero" style="text-align:left;padding:4px 0"><h1 style="font-size:20px">Importar</h1></div>
-  <div class="ped"><b>1. Productos de la tienda</b><p class="sub">Subí <i>productos_tienda.json</i>. Actualiza fotos, colores, talles y stock. No toca tu selección.</p><input type="file" accept=".json" onchange="impProd(this.files[0])">
+  <div class="ped"><b>1. Productos de la tienda</b><p class="sub">Subí <i>productos_tienda_v2.json</i> (o el más nuevo que te pase). Actualiza fotos, colores, talles y stock. No toca tu selección.</p><input type="file" accept=".json" onchange="impProd(this.files[0])">
   <div class="sub">Última actualización: ${CFG.prod_ts?new Date(CFG.prod_ts).toLocaleString('es-AR'):'nunca'}</div></div>
   <div class="ped"><b>2. Precios de Ninox</b><p class="sub">Subí el Excel exportado de Ninox (columna Codigo + una columna de precio). Solo se guarda el código y el precio elegido; el costo nunca se sube.</p>
   <input type="file" accept=".xlsx,.xls,.csv" onchange="leerExcel(this.files[0])"><div id="xlsBox"></div>
@@ -297,7 +298,7 @@ function admImp(){
 }
 function impProd(f){ if(!f) return; const r=new FileReader(); r.onload=()=>{ try{
   const d=JSON.parse(r.result); const out={};
-  (d.productos||[]).forEach(a=>{ const [id,nombre,url,img,codigo,grupos,colores,talles,stock,pw]=a; const st={}; Object.entries(stock||{}).forEach(([k,v])=>{ st[k.replace('.','_')]=v; }); out[id]={nombre,url:URL_BASE+url,img,codigo:codigo||'',grupos:grupos||[],colores:colores||[],talles:talles||[],stock:st,precio_web:pw||null}; });
+  (d.productos||[]).forEach(a=>{ const [id,nombre,url,img,codigo,grupos,colores,talles,stock,pw,fotos]=a; const st={}; Object.entries(stock||{}).forEach(([k,v])=>{ st[k.replace('.','_')]=v; }); out[id]={nombre,url:URL_BASE+url,img,codigo:codigo||'',grupos:grupos||[],colores:colores||[],talles:talles||[],stock:st,precio_web:pw||null,fotos:fotos||[]}; });
   if(!Object.keys(out).length) throw new Error('vacío');
   db.ref(ROOT+'/productos').set(out).then(()=>{ db.ref(ROOT+'/config/prod_ts').set(Date.now()); alert(Object.keys(out).length+' productos importados'); });
 }catch(e){ alert('No pude leer el archivo: '+e.message); } }; r.readAsText(f); }
